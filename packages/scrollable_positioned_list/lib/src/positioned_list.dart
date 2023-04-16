@@ -332,6 +332,28 @@ class _PositionedListState extends State<PositionedList> {
           // Skip this element if `box` has never been laid out.
           if (!box.hasSize) continue;
           if (widget.scrollDirection == Axis.vertical) {
+
+            // Verify that viewport.dart:810 won't call a pivot.size that would be null
+            RenderObject child = box;
+            RenderBox? pivot;
+            while (child.parent != viewport) {
+              if(child.parent == null) break;
+              final RenderObject parent = child.parent! as RenderObject;
+              if (child is RenderBox) {
+                pivot = child;
+                break;
+              }
+              child = parent;
+            }
+
+            // Try to get the size. If it fails, then we skip the rest of the treatment
+            try {
+              final s = pivot?.size;
+              if(s == null) continue;
+            } catch(_) {
+              continue;
+            }
+
             final reveal = viewport!.getOffsetToReveal(box, 0).offset;
             if (!reveal.isFinite) continue;
             final itemOffset =
