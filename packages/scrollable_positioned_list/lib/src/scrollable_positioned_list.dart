@@ -51,6 +51,7 @@ class ScrollablePositionedList extends StatefulWidget {
     this.addAutomaticKeepAlives = true,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
+    this.primaryScrollController,
   })  : assert(itemCount != null),
         assert(itemBuilder != null),
         itemPositionsNotifier = itemPositionsListener as ItemPositionsNotifier?,
@@ -78,6 +79,7 @@ class ScrollablePositionedList extends StatefulWidget {
     this.addAutomaticKeepAlives = true,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
+    this.primaryScrollController,
   })  : assert(itemCount != null),
         assert(itemBuilder != null),
         assert(separatorBuilder != null),
@@ -171,6 +173,10 @@ class ScrollablePositionedList extends StatefulWidget {
   /// cache extent.
   final double? minCacheExtent;
 
+  /// Will be used as the scroll controller for the primary list.
+  /// keepScrollOffset must be false.
+  final ScrollController? primaryScrollController;
+
   @override
   State<StatefulWidget> createState() => _ScrollablePositionedListState();
 }
@@ -180,8 +186,14 @@ class ScrollablePositionedList extends StatefulWidget {
 class ItemScrollController {
   /// Whether any ScrollablePositionedList objects are attached this object.
   ///
-  /// If `false`, then [jumpTo] and [scrollTo] must not be called.
+  /// If `false`, then [jumpTo], [scrollTo] and [jumpToPixel] must not be called.
   bool get isAttached => _scrollableListState != null;
+
+  /// Returns the current [scrollController.offset].
+  /// Also see [jumpToPixel].
+  double get currentScrollControllerOffset {
+    return _scrollableListState!.primary.scrollController.offset;
+  }
 
   _ScrollablePositionedListState? _scrollableListState;
 
@@ -245,6 +257,23 @@ class ItemScrollController {
     );
   }
 
+  /// Immediately jump the list to the provided [value] via [scrollController.jumpTo].
+  /// Also see [currentScrollControllerOffset].
+  void jumpToPixel(double value) {
+    _scrollableListState!.primary.scrollController.jumpTo(value);
+  }
+
+  /// Calls [primary.scrollController.animateTo] with the given values.
+  /// See [currentScrollControllerOffset] to get the current offset.
+  void scrollToPixel({
+    required double offset,
+    required Duration duration,
+    required Curve curve,
+  }) {
+    _scrollableListState!.primary.scrollController
+        .animateTo(offset, duration: duration, curve: curve);
+  }
+
   void _attach(_ScrollablePositionedListState scrollableListState) {
     assert(_scrollableListState == null);
     _scrollableListState = scrollableListState;
@@ -258,11 +287,11 @@ class ItemScrollController {
 class _ScrollablePositionedListState extends State<ScrollablePositionedList>
     with TickerProviderStateMixin {
   /// Details for the primary (active) [ListView].
-  var primary = _ListDisplayDetails(const ValueKey('Ping'));
+  late _ListDisplayDetails primary;
 
   /// Details for the secondary (transitional) [ListView] that is temporarily
   /// shown when scrolling a long distance.
-  var secondary = _ListDisplayDetails(const ValueKey('Pong'));
+  var secondary = _ListDisplayDetails(key: const ValueKey('Pong'));
 
   final opacity = ProxyAnimation(const AlwaysStoppedAnimation<double>(0));
 
@@ -275,6 +304,13 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
   @override
   void initState() {
     super.initState();
+
+    // Initialize the primary list with the provided scroll controller.
+    primary = _ListDisplayDetails(
+      key: const ValueKey('Ping'),
+      providedScrollController: widget.primaryScrollController,
+    );
+
     ItemPosition? initialPosition = PageStorage.of(context)!.readState(context);
     primary.target = initialPosition?.index ?? widget.initialScrollIndex;
     primary.alignment =
@@ -580,10 +616,19 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
 }
 
 class _ListDisplayDetails {
-  _ListDisplayDetails(this.key);
+  _ListDisplayDetails({
+    required this.key,
+    ScrollController? providedScrollController,
+  }) {
+    // Force keepScrollOffset to be false in the provided scroll controller.
+    if(providedScrollController != null) {
+      assert(providedScrollController.keepScrollOffset == false);
+    }
+    scrollController = providedScrollController ?? ScrollController(keepScrollOffset: false);
+  }
 
   final itemPositionsNotifier = ItemPositionsNotifier();
-  final scrollController = ScrollController(keepScrollOffset: false);
+  late final ScrollController scrollController;
 
   /// The index of the item to scroll to.
   int target = 0;
